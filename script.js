@@ -18,7 +18,7 @@ const pieces = {
     'k': '♚', 'q': '♛', 'r': '♜', 'b': '♝', 'n': '♞', 'p': '♟'
 };
 
-const initialBoard = [
+const initialBoardWhite = [
     'rnbqkbnr',
     'pppppppp',
     '........',
@@ -29,9 +29,25 @@ const initialBoard = [
     'RNBQKBNR'
 ];
 
+const initialBoardBlack = [
+    'RNBQKBNR',
+    'PPPPPPPP',
+    '........',
+    '........',
+    '........',
+    '........',
+    'pppppppp',
+    'rnbqkbnr'
+];
+
 // Инициализация доски
 function initBoard() {
-    chessBoard = initialBoard.map(row => row.split(''));
+    if (playerColor === 'black') {
+        chessBoard = initialBoardBlack.map(row => row.split(''));
+    } else {
+        chessBoard = initialBoardWhite.map(row => row.split(''));
+    }
+    
     board.innerHTML = '';
     for (let i = 0; i < 64; i++) {
         const cell = document.createElement('div');
@@ -49,17 +65,14 @@ function initBoard() {
     }
     addBoardLabels();
     if (playerColor === 'black') {
-        board.classList.add('flipped');
         isPlayerTurn = false;
         isAIMoving = true;
         aiMove();
         updateHelper("ИИ сходил. Твой черёд за чёрных!");
     } else if (playerColor === 'white') {
-        board.classList.remove('flipped');
         isPlayerTurn = true;
         updateHelper("Твой ход! Ты играешь за белых.");
     } else {
-        board.classList.remove('flipped');
         diceButton.classList.remove('hidden');
         updateHelper("Брось кубик, чтобы выбрать сторону!");
     }
@@ -72,8 +85,7 @@ function addBoardLabels() {
     lettersTop.innerHTML = '';
     lettersBottom.innerHTML = '';
     const letters = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
-    const order = playerColor === 'black' ? [1, 2, 3, 4, 5, 6, 7, 8] : [8, 7, 6, 5, 4, 3, 2, 1];
-    const letterOrder = playerColor === 'black' ? letters.slice().reverse() : letters;
+    const order = [8, 7, 6, 5, 4, 3, 2, 1];
 
     order.forEach(num => {
         const numLeft = document.createElement('div');
@@ -83,7 +95,7 @@ function addBoardLabels() {
         numRight.textContent = num;
         numbersRight.appendChild(numRight);
     });
-    letterOrder.forEach(letter => {
+    letters.forEach(letter => {
         const letterTop = document.createElement('div');
         letterTop.textContent = letter;
         lettersTop.appendChild(letterTop);
@@ -119,17 +131,15 @@ function rollDice() {
                 if (playerRoll > aiRoll) {
                     playerColor = 'white';
                     updateHelper("Твой ход! Ты играешь за белых.");
-                    board.classList.remove('flipped');
                     isPlayerTurn = true;
                 } else {
                     playerColor = 'black';
                     updateHelper("ИИ ходит первым. Ты играешь за чёрных!");
-                    board.classList.add('flipped');
                     isPlayerTurn = false;
                     isAIMoving = true;
                     aiMove();
                 }
-                addBoardLabels();
+                initBoard();
             }, 1000);
         }
     }, 100);
@@ -146,21 +156,14 @@ function handleClick(e) {
         return;
     }
 
-    let row = parseInt(e.target.dataset.row);
-    let col = parseInt(e.target.dataset.col);
-    if (playerColor === 'black') {
-        row = 7 - row;
-        col = 7 - col;
-    }
+    const row = parseInt(e.target.dataset.row);
+    const col = parseInt(e.target.dataset.col);
     const piece = chessBoard[row][col];
 
     if (selectedPiece) {
-        let toRow = row;
-        let toCol = col;
-        if (playerColor === 'black') {
-            toRow = 7 - toRow;
-            toCol = 7 - toCol;
-        }
+        const toRow = row;
+        const toCol = col;
+
         if (isValidMove(selectedPiece, { row: toRow, col: toCol })) {
             movePiece(selectedPiece, { row: toRow, col: toCol });
             clearHighlights();
@@ -170,18 +173,22 @@ function handleClick(e) {
             checkWinCondition();
             if (!isGameOver) {
                 updateHelper("Отличный ход! Теперь ход ИИ.");
-                aiMove();
+                setTimeout(aiMove, 500);
             }
         } else {
             clearHighlights();
             selectedPiece = null;
             updateHelper("Этот ход невозможен. Попробуй другой!");
         }
-    } else if (piece !== '.' && ((playerColor === 'white' && piece === piece.toUpperCase()) || (playerColor === 'black' && piece === piece.toLowerCase()))) {
+    } else if (piece !== '.' && 
+               ((playerColor === 'white' && piece === piece.toUpperCase()) || 
+                (playerColor === 'black' && piece === piece.toLowerCase()))) {
         selectedPiece = { row, col };
         highlightSelected(row, col);
         highlightPossibleMoves(row, col);
         updateHelper(getPieceHelp(piece, row, col));
+    } else {
+        updateHelper("Выбери свою фигуру!");
     }
 }
 
@@ -195,16 +202,28 @@ function isValidMove(from, to) {
 
     if (target !== '.' && (isWhitePiece === (target === target.toUpperCase()))) return false;
 
-    if (piece === 'P') {
+    // Игрок всегда внизу (7-8 ряды), его пешки идут вверх (dy < 0)
+    // ИИ всегда сверху (1-2 ряды), его пешки идут вниз (dy > 0)
+    if (piece === 'P' && playerColor === 'white') { // Белые пешки (игрок)
         if (from.col === to.col && target === '.') {
             if (from.row === 6 && dy === -2 && chessBoard[5][to.col] === '.') return true;
             if (dy === -1) return true;
         } else if (Math.abs(dx) === 1 && dy === -1 && target !== '.' && target.toLowerCase() === target) return true;
-    } else if (piece === 'p') {
+    } else if (piece === 'p' && playerColor === 'black') { // Чёрные пешки (игрок)
+        if (from.col === to.col && target === '.') {
+            if (from.row === 6 && dy === -2 && chessBoard[5][to.col] === '.') return true;
+            if (dy === -1) return true;
+        } else if (Math.abs(dx) === 1 && dy === -1 && target !== '.' && target.toUpperCase() === target) return true;
+    } else if (piece === 'p' && playerColor === 'white') { // Чёрные пeshки (ИИ)
         if (from.col === to.col && target === '.') {
             if (from.row === 1 && dy === 2 && chessBoard[2][to.col] === '.') return true;
             if (dy === 1) return true;
         } else if (Math.abs(dx) === 1 && dy === 1 && target !== '.' && target.toUpperCase() === target) return true;
+    } else if (piece === 'P' && playerColor === 'black') { // Белые пешки (ИИ)
+        if (from.col === to.col && target === '.') {
+            if (from.row === 1 && dy === 2 && chessBoard[2][to.col] === '.') return true;
+            if (dy === 1) return true;
+        } else if (Math.abs(dx) === 1 && dy === 1 && target !== '.' && target.toLowerCase() === target) return true;
     } else if (piece === 'R' || piece === 'r') {
         if (dx === 0 || dy === 0) return isPathClear(from, to);
     } else if (piece === 'N' || piece === 'n') {
@@ -263,17 +282,22 @@ function aiMove() {
         return;
     }
 
-    let piecesToMove = [];
+    let allPossibleMoves = [];
     for (let row = 0; row < 8; row++) {
         for (let col = 0; col < 8; col++) {
             const piece = chessBoard[row][col];
-            if (piece !== '.' && ((playerColor === 'white' && piece === piece.toLowerCase()) || (playerColor === 'black' && piece === piece.toUpperCase()))) {
-                piecesToMove.push({ row, col });
+            if (piece !== '.' && 
+                ((playerColor === 'white' && piece === piece.toLowerCase()) || 
+                 (playerColor === 'black' && piece === piece.toUpperCase()))) {
+                const moves = getPossibleMoves({ row, col });
+                moves.forEach(move => {
+                    allPossibleMoves.push({ from: { row, col }, to: move });
+                });
             }
         }
     }
 
-    if (piecesToMove.length === 0) {
+    if (allPossibleMoves.length === 0) {
         updateHelper("У ИИ нет ходов! Ты победила!");
         isGameOver = true;
         isAIMoving = false;
@@ -281,16 +305,10 @@ function aiMove() {
         return;
     }
 
-    const from = piecesToMove[Math.floor(Math.random() * piecesToMove.length)];
-    const possibleMoves = getPossibleMoves(from);
-    if (possibleMoves.length > 0) {
-        const to = possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
-        movePiece(from, to);
-        checkWinCondition();
-        if (!isGameOver) updateHelper("ИИ сходил. Твой черёд!");
-    } else {
-        updateHelper("ИИ не может ходить! Пропускает ход.");
-    }
+    const move = allPossibleMoves[Math.floor(Math.random() * allPossibleMoves.length)];
+    movePiece(move.from, move.to);
+    checkWinCondition();
+    if (!isGameOver) updateHelper("ИИ сходил. Твой черёд!");
 
     isAIMoving = false;
     isPlayerTurn = true;
@@ -312,20 +330,31 @@ function getPossibleMoves({ row, col }) {
         'K': [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]
     };
 
-    if (piece === 'p') {
-        if (row < 7 && chessBoard[row + 1][col] === '.') moves.push({ row: row + 1, col });
-        if (row === 1 && chessBoard[2][col] === '.' && chessBoard[3][col] === '.') moves.push({ row: 3, col });
-        if (row < 7 && col > 0 && chessBoard[row + 1][col - 1] !== '.' && chessBoard[row + 1][col - 1].toUpperCase() === chessBoard[row + 1][col - 1]) 
-            moves.push({ row: row + 1, col: col - 1 });
-        if (row < 7 && col < 7 && chessBoard[row + 1][col + 1] !== '.' && chessBoard[row + 1][col + 1].toUpperCase() === chessBoard[row + 1][col + 1]) 
-            moves.push({ row: row + 1, col: col + 1 });
-    } else if (piece === 'P') {
+    // Игрок всегда внизу, его пешки идут вверх
+    if ((piece === 'P' && playerColor === 'white') || (piece === 'p' && playerColor === 'black')) {
         if (row > 0 && chessBoard[row - 1][col] === '.') moves.push({ row: row - 1, col });
         if (row === 6 && chessBoard[5][col] === '.' && chessBoard[4][col] === '.') moves.push({ row: 4, col });
-        if (row > 0 && col > 0 && chessBoard[row - 1][col - 1] !== '.' && chessBoard[row - 1][col - 1].toLowerCase() === chessBoard[row - 1][col - 1]) 
+        if (row > 0 && col > 0 && chessBoard[row - 1][col - 1] !== '.' && 
+            ((playerColor === 'white' && chessBoard[row - 1][col - 1].toLowerCase() === chessBoard[row - 1][col - 1]) ||
+             (playerColor === 'black' && chessBoard[row - 1][col - 1].toUpperCase() === chessBoard[row - 1][col - 1]))) 
             moves.push({ row: row - 1, col: col - 1 });
-        if (row > 0 && col < 7 && chessBoard[row - 1][col + 1] !== '.' && chessBoard[row - 1][col + 1].toLowerCase() === chessBoard[row - 1][col + 1]) 
+        if (row > 0 && col < 7 && chessBoard[row - 1][col + 1] !== '.' && 
+            ((playerColor === 'white' && chessBoard[row - 1][col + 1].toLowerCase() === chessBoard[row - 1][col + 1]) ||
+             (playerColor === 'black' && chessBoard[row - 1][col + 1].toUpperCase() === chessBoard[row - 1][col + 1]))) 
             moves.push({ row: row - 1, col: col + 1 });
+    }
+    // ИИ всегда сверху, его пешки идут вниз
+    else if ((piece === 'p' && playerColor === 'white') || (piece === 'P' && playerColor === 'black')) {
+        if (row < 7 && chessBoard[row + 1][col] === '.') moves.push({ row: row + 1, col });
+        if (row === 1 && chessBoard[2][col] === '.' && chessBoard[3][col] === '.') moves.push({ row: 3, col });
+        if (row < 7 && col > 0 && chessBoard[row + 1][col - 1] !== '.' && 
+            ((playerColor === 'white' && chessBoard[row + 1][col - 1].toUpperCase() === chessBoard[row + 1][col - 1]) ||
+             (playerColor === 'black' && chessBoard[row + 1][col - 1].toLowerCase() === chessBoard[row + 1][col - 1]))) 
+            moves.push({ row: row + 1, col: col - 1 });
+        if (row < 7 && col < 7 && chessBoard[row + 1][col + 1] !== '.' && 
+            ((playerColor === 'white' && chessBoard[row + 1][col + 1].toUpperCase() === chessBoard[row + 1][col + 1]) ||
+             (playerColor === 'black' && chessBoard[row + 1][col + 1].toLowerCase() === chessBoard[row + 1][col + 1]))) 
+            moves.push({ row: row + 1, col: col + 1 });
     } else {
         const dirs = directions[piece];
         for (let [dy, dx] of dirs) {
@@ -368,113 +397,15 @@ function updateBoard() {
 // Выделение клеток
 function highlightSelected(row, col) {
     clearHighlights();
-    const index = playerColor === 'black' ? (7 - row) * 8 + (7 - col) : row * 8 + col;
+    const index = row * 8 + col;
     board.children[index].classList.add('selected');
 }
 
 function highlightPossibleMoves(row, col) {
-    const piece = chessBoard[row][col];
-    if (piece === 'P') {
-        if (row === 6 && chessBoard[5][col] === '.' && chessBoard[4][col] === '.') board.children[(playerColor === 'black' ? 3 : 4) * 8 + col].classList.add('possible');
-        if (row > 0 && chessBoard[row - 1][col] === '.') board.children[(playerColor === 'black' ? (7 - (row - 1)) : (row - 1)) * 8 + (playerColor === 'black' ? (7 - col) : col)].classList.add('possible');
-        if (row > 0 && col > 0 && chessBoard[row - 1][col - 1] !== '.' && chessBoard[row - 1][col - 1].toLowerCase() === chessBoard[row - 1][col - 1]) 
-            board.children[(playerColor === 'black' ? (7 - (row - 1)) : (row - 1)) * 8 + (playerColor === 'black' ? (7 - (col - 1)) : (col - 1))].classList.add('possible');
-        if (row > 0 && col < 7 && chessBoard[row - 1][col + 1] !== '.' && chessBoard[row - 1][col + 1].toLowerCase() === chessBoard[row - 1][col + 1]) 
-            board.children[(playerColor === 'black' ? (7 - (row - 1)) : (row - 1)) * 8 + (playerColor === 'black' ? (7 - (col + 1)) : (col + 1))].classList.add('possible');
-    } else if (piece === 'p') {
-        if (row === 1 && chessBoard[2][col] === '.' && chessBoard[3][col] === '.') board.children[(playerColor === 'black' ? 4 : 3) * 8 + col].classList.add('possible');
-        if (row < 7 && chessBoard[row + 1][col] === '.') board.children[(playerColor === 'black' ? (7 - (row + 1)) : (row + 1)) * 8 + (playerColor === 'black' ? (7 - col) : col)].classList.add('possible');
-        if (row < 7 && col > 0 && chessBoard[row + 1][col - 1] !== '.' && chessBoard[row + 1][col - 1].toUpperCase() === chessBoard[row + 1][col - 1]) 
-            board.children[(playerColor === 'black' ? (7 - (row + 1)) : (row + 1)) * 8 + (playerColor === 'black' ? (7 - (col - 1)) : (col - 1))].classList.add('possible');
-        if (row < 7 && col < 7 && chessBoard[row + 1][col + 1] !== '.' && chessBoard[row + 1][col + 1].toUpperCase() === chessBoard[row + 1][col + 1]) 
-            board.children[(playerColor === 'black' ? (7 - (row + 1)) : (row + 1)) * 8 + (playerColor === 'black' ? (7 - (col + 1)) : (col + 1))].classList.add('possible');
-    } else if (piece === 'R' || piece === 'r') {
-        for (let i = 1; i < 8; i++) {
-            if (row - i >= 0 && checkAndHighlight(row - i, col, piece)) break;
-        }
-        for (let i = 1; i < 8; i++) {
-            if (row + i < 8 && checkAndHighlight(row + i, col, piece)) break;
-        }
-        for (let i = 1; i < 8; i++) {
-            if (col - i >= 0 && checkAndHighlight(row, col - i, piece)) break;
-        }
-        for (let i = 1; i < 8; i++) {
-            if (col + i < 8 && checkAndHighlight(row, col + i, piece)) break;
-        }
-    } else if (piece === 'N' || piece === 'n') {
-        const knightMoves = [[-2, -1], [-2, 1], [2, -1], [2, 1], [-1, -2], [-1, 2], [1, -2], [1, 2]];
-        knightMoves.forEach(([dy, dx]) => {
-            const newRow = row + dy;
-            const newCol = col + dx;
-            if (newRow >= 0 && newRow < 8 && newCol >= 0 && newCol < 8) checkAndHighlight(newRow, newCol, piece);
-        });
-    } else if (piece === 'B' || piece === 'b') {
-        for (let i = 1; i < 8; i++) {
-            if (row - i >= 0 && col - i >= 0 && checkAndHighlight(row - i, col - i, piece)) break;
-        }
-        for (let i = 1; i < 8; i++) {
-            if (row - i >= 0 && col + i < 8 && checkAndHighlight(row - i, col + i, piece)) break;
-        }
-        for (let i = 1; i < 8; i++) {
-            if (row + i < 8 && col - i >= 0 && checkAndHighlight(row + i, col - i, piece)) break;
-        }
-        for (let i = 1; i < 8; i++) {
-            if (row + i < 8 && col + i < 8 && checkAndHighlight(row + i, col + i, piece)) break;
-        }
-    } else if (piece === 'Q' || piece === 'q') {
-        for (let i = 1; i < 8; i++) {
-            if (row - i >= 0 && checkAndHighlight(row - i, col, piece)) break;
-        }
-        for (let i = 1; i < 8; i++) {
-            if (row + i < 8 && checkAndHighlight(row + i, col, piece)) break;
-        }
-        for (let i = 1; i < 8; i++) {
-            if (col - i >= 0 && checkAndHighlight(row, col - i, piece)) break;
-        }
-        for (let i = 1; i < 8; i++) {
-            if (col + i < 8 && checkAndHighlight(row, col + i, piece)) break;
-        }
-        for (let i = 1; i < 8; i++) {
-            if (row - i >= 0 && col - i >= 0 && checkAndHighlight(row - i, col - i, piece)) break;
-        }
-        for (let i = 1; i < 8; i++) {
-            if (row - i >= 0 && col + i < 8 && checkAndHighlight(row - i, col + i, piece)) break;
-        }
-        for (let i = 1; i < 8; i++) {
-            if (row + i < 8 && col - i >= 0 && checkAndHighlight(row + i, col - i, piece)) break;
-        }
-        for (let i = 1; i < 8; i++) {
-            if (row + i < 8 && col + i < 8 && checkAndHighlight(row + i, col + i, piece)) break;
-        }
-    } else if (piece === 'K' || piece === 'k') {
-        for (let dy = -1; dy <= 1; dy++) {
-            for (let dx = -1; dx <= 1; dx++) {
-                if (dy === 0 && dx === 0) continue;
-                const newRow = row + dy;
-                const newCol = col + dx;
-                if (newRow >= 0 && newRow < 8 && newCol >= 0 && newCol < 8) checkAndHighlight(newRow, newCol, piece);
-            }
-        }
-    }
-}
-
-function checkAndHighlight(row, col, piece) {
-    const target = chessBoard[row][col];
-    const isOwnPiece = (piece === piece.toUpperCase() && target === target.toUpperCase()) || (piece === piece.toLowerCase() && target === target.toLowerCase());
-    const index = playerColor === 'black' ? (7 - row) * 8 + (7 - col) : row * 8 + col;
-    if (target === '.') {
+    const possibleMoves = getPossibleMoves({ row, col });
+    possibleMoves.forEach(move => {
+        const index = move.row * 8 + move.col;
         board.children[index].classList.add('possible');
-        return false;
-    } else if (!isOwnPiece && target !== '.') {
-        board.children[index].classList.add('possible');
-        return true;
-    }
-    return true;
-}
-
-function clearHighlights() {
-    document.querySelectorAll('.cell').forEach(cell => {
-        cell.classList.remove('selected', 'possible');
     });
 }
 
@@ -484,7 +415,18 @@ function updateHelper(message) {
     console.log(message); // Отладка
 }
 
+// Подсказка по фигуре
+function getPieceHelp(piece, row, col) {
+    const pieceName = piece === 'P' || piece === 'p' ? 'Пешка' :
+                     piece === 'R' || piece === 'r' ? 'Ладья' :
+                     piece === 'N' || piece === 'n' ? 'Конь' :
+                     piece === 'B' || piece === 'b' ? 'Слон' :
+                     piece === 'Q' || piece === 'q' ? 'Ферзь' : 'Король';
+    return `Выбрана ${pieceName}. Выбери клетку для хода!`;
+}
+
 // Таймер бездействия
+let inactivityTimer;
 function resetInactivityTimer() {
     if (inactivityTimer) clearTimeout(inactivityTimer);
     if (isPlayerTurn && !isGameOver && playerColor !== null && !isAIMoving) {
@@ -514,8 +456,15 @@ function suggestMove() {
                          piece === 'N' || piece === 'n' ? 'Конь' :
                          piece === 'B' || piece === 'b' ? 'Слон' :
                          piece === 'Q' || piece === 'q' ? 'Ферзь' : 'Король';
-        updateHelper(`Попробуй ход: ${pieceName} на ${letters[playerColor === 'black' ? 7 - move.col : move.col]}${playerColor === 'black' ? (8 - move.row) : (8 - move.row)}!`);
+        updateHelper(`Попробуй ход: ${pieceName} на ${letters[move.col]}${8 - move.row}!`);
     }
+}
+
+// Очистка выделения
+function clearHighlights() {
+    document.querySelectorAll('.cell').forEach(cell => {
+        cell.classList.remove('selected', 'possible');
+    });
 }
 
 // Сброс игры
@@ -534,3 +483,8 @@ function resetGame() {
 
 // Старт игры
 initBoard();
+
+// Привязка событий
+if (diceButton) diceButton.addEventListener('click', rollDice);
+const resetButton = document.getElementById('reset-button');
+if (resetButton) resetButton.addEventListener('click', resetGame);
